@@ -1,0 +1,107 @@
+import cv2
+import requests
+import tkinter as tk
+from tkinter import messagebox, scrolledtext
+import threading
+
+API_URL = "https://www.themealdb.com/api/json/v1/1/filter.php?i="
+DETAIL_URL = "https://www.themealdb.com/api/json/v1/1/lookup.php?i="
+
+def get_recipes_by_ingredients(ingredient):
+    response = requests.get(API_URL + ingredient)
+    if response.status_code == 200:
+        data = response.json()
+        meals = data.get("meals")
+        if meals:
+            all_recipes = []
+            for meal in meals[:3]:
+                meal_id = meal["idMeal"]
+                full_recipe = get_full_recipe(meal_id)
+                all_recipes.append(full_recipe)
+            return "\n\n" + "-" * 50 + "\n\n".join(all_recipes)
+        else:
+            return "No recipes found with that ingredient."
+    else:
+        return "Error fetching data from API."
+
+def get_full_recipe(meal_id):
+    response = requests.get(DETAIL_URL + meal_id)
+    if response.status_code == 200:
+        data = response.json()
+        meal = data["meals"][0]
+        title = meal["strMeal"]
+        category = meal["strCategory"]
+        area = meal["strArea"]
+        instructions = meal["strInstructions"]
+
+        ingredients = []
+        for i in range(1, 21):
+            ingredient = meal[f"strIngredient{i}"]
+            measure = meal[f"strMeasure{i}"]
+            if ingredient and ingredient.strip():
+                ingredients.append(f"{measure} {ingredient}".strip())
+
+        recipe = f"🍽 Recipe: {title}\nCategory: {category} | Origin: {area}\n\n"
+        recipe += "Ingredients:\n" + "\n".join(ingredients) + "\n\n"
+        recipe += "Instructions:\n" + instructions
+        return recipe
+    else:
+        return "Error retrieving recipe details."
+
+def camera_capture():
+    cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    if not cap.isOpened():
+        messagebox.showerror("Camera Error", "Cannot open camera.")
+        return
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        cv2.imshow("Camera Feed", frame)
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == 32:  # SPACE to capture
+            img_name = "captured_food.jpg"
+            cv2.imwrite(img_name, frame)
+            messagebox.showinfo("Success", f"Image saved as {img_name}")
+            break
+        elif key == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+def search_recipe():
+    ingredients_input = entry.get()
+    if not ingredients_input.strip():
+        messagebox.showwarning("Input Error", "Please enter at least one ingredient (e.g., chicken).")
+        return
+
+    first_ingredient = ingredients_input.split(",")[0].strip()
+    result = get_recipes_by_ingredients(first_ingredient)
+    text_output.delete(1.0, tk.END)
+    text_output.insert(tk.END, result)
+
+def start_camera_thread():
+    threading.Thread(target=camera_capture, daemon=True).start()
+
+root = tk.Tk()
+root.title("Recipe Finder + Camera Capture")
+root.geometry("700x700")
+
+tk.Label(root, text="Enter Ingredients (comma-separated):", font=("Arial", 12)).pack(pady=5)
+entry = tk.Entry(root, width=50, font=("Arial", 12))
+entry.pack(pady=5)
+
+search_button = tk.Button(root, text="Find Recipes", font=("Arial", 12), command=search_recipe)
+search_button.pack(pady=10)
+
+camera_button = tk.Button(root, text="Open Camera (Press SPACE to Capture, Q to Quit)", font=("Arial", 12), command=start_camera_thread)
+camera_button.pack(pady=10)
+
+text_output = scrolledtext.ScrolledText(root, width=80, height=25, font=("Arial", 10))
+text_output.pack(pady=5)
+
+root.mainloop()
